@@ -1,0 +1,14 @@
+.DS_Store
+node_modules
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.venv
+.env
+dist
+build
+.idea
+.vscode
+coverage

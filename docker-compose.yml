@@ -1,0 +1,58 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: quartz_level_db
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: quartz_monitor
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks:
+      - quartz_net
+
+  backend:
+    build:
+      context: ./backend
+    container_name: quartz_level_backend
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: root
+      DB_NAME: quartz_monitor
+      CORS_ORIGINS: "*"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    networks:
+      - quartz_net
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: quartz_level_frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+    networks:
+      - quartz_net
+
+volumes:
+  db_data:
+
+networks:
+  quartz_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.88.0.0/24
