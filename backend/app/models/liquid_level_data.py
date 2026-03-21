@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import Enum
+from typing import Optional
 
 from sqlalchemy import DateTime, Enum as SQLEnum, Float, ForeignKey, Index, Integer, BigInteger
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -22,9 +23,11 @@ class LiquidLevelData(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     channel_id: Mapped[int] = mapped_column(Integer, ForeignKey("channels.id"), nullable=False)
-    value: Mapped[float] = mapped_column(Float, nullable=False)
+    value_a: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    value_b: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    fused_value: Mapped[float] = mapped_column(Float, nullable=False)
     sample_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    temperature: Mapped[float | None] = mapped_column(Float, nullable=True)
+    temperature: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     status: Mapped[DataStatus] = mapped_column(SQLEnum(DataStatus), default=DataStatus.normal)
 
     channel = relationship("Channel", back_populates="data_records")

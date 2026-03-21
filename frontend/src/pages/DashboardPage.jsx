@@ -16,7 +16,8 @@ const DashboardPage = ({ summary, trendData, selectedChannelId, onSelectChannel,
 
   const chartOption = {
     tooltip: { trigger: 'axis' },
-    grid: { left: 40, right: 16, top: 30, bottom: 40 },
+    legend: { data: ['传感器A', '传感器B', '融合值'] },
+    grid: { left: 40, right: 16, top: 40, bottom: 40 },
     xAxis: {
       type: 'category',
       boundaryGap: false,
@@ -25,13 +26,31 @@ const DashboardPage = ({ summary, trendData, selectedChannelId, onSelectChannel,
     yAxis: { type: 'value', name: '液位(mm)' },
     series: [
       {
+        name: '传感器A',
         type: 'line',
         smooth: true,
-        data: trendPoints.map((item) => item.value),
+        data: trendPoints.map((item) => item.value_a),
+        lineStyle: { width: 2, color: '#13c2c2', type: 'dashed' },
+        symbol: 'none',
+      },
+      {
+        name: '传感器B',
+        type: 'line',
+        smooth: true,
+        data: trendPoints.map((item) => item.value_b),
+        lineStyle: { width: 2, color: '#722ed1', type: 'dashed' },
+        symbol: 'none',
+      },
+      {
+        name: '融合值',
+        type: 'line',
+        smooth: true,
+        data: trendPoints.map((item) => item.fused_value),
         areaStyle: {
           color: 'rgba(24, 144, 255, 0.18)',
         },
         lineStyle: { width: 3, color: '#1677ff' },
+        symbol: 'none',
       },
     ],
   };
@@ -53,10 +72,22 @@ const DashboardPage = ({ summary, trendData, selectedChannelId, onSelectChannel,
         value ? <Tag color={statusColorMap[value]}>{value.toUpperCase()}</Tag> : <Tag>无数据</Tag>,
     },
     {
-      title: '最新液位(mm)',
+      title: '传感器A(mm)',
+      dataIndex: 'latest_value_a',
+      key: 'latest_value_a',
+      render: (value) => (value !== null && value !== undefined ? value.toFixed(2) : '-'),
+    },
+    {
+      title: '传感器B(mm)',
+      dataIndex: 'latest_value_b',
+      key: 'latest_value_b',
+      render: (value) => (value !== null && value !== undefined ? value.toFixed(2) : '-'),
+    },
+    {
+      title: '融合值(mm)',
       dataIndex: 'latest_value',
       key: 'latest_value',
-      render: (value) => (value === null || value === undefined ? '--' : value.toFixed(2)),
+      render: (value) => (value === null || value === undefined ? '--' : <strong>{value.toFixed(2)}</strong>),
     },
     {
       title: '采样时间',

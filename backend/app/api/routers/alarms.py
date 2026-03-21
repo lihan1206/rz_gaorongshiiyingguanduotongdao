@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -6,13 +7,13 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.alarm import Alarm
 from app.models.channel import Channel
-from app.schemas.alarm import AlarmRead
+from app.schemas.alarm import AlarmRead, AlarmResolveRequest
 
 router = APIRouter(prefix="/alarms", tags=["alarms"])
 
 
-@router.get("", response_model=list[AlarmRead])
-def list_alarms(resolved: bool | None = None, db: Session = Depends(get_db)):
+@router.get("", response_model=list)
+def list_alarms(resolved: Optional[bool] = None, db: Session = Depends(get_db)):
     query = db.query(Alarm, Channel.name).join(Channel, Channel.id == Alarm.channel_id)
     if resolved is not None:
         query = query.filter(Alarm.resolved == resolved)
@@ -26,6 +27,9 @@ def list_alarms(resolved: bool | None = None, db: Session = Depends(get_db)):
             level=alarm.level,
             threshold=alarm.threshold,
             actual_value=alarm.actual_value,
+            value_a=alarm.value_a,
+            value_b=alarm.value_b,
+            sensor_source=alarm.sensor_source,
             occurred_at=alarm.occurred_at,
             description=alarm.description,
             resolved=alarm.resolved,
@@ -36,13 +40,16 @@ def list_alarms(resolved: bool | None = None, db: Session = Depends(get_db)):
 
 
 @router.post("/{alarm_id}/resolve", response_model=AlarmRead)
-def resolve_alarm(alarm_id: int, db: Session = Depends(get_db)):
+def resolve_alarm(alarm_id: int, payload: AlarmResolveRequest, db: Session = Depends(get_db)):
     alarm = db.query(Alarm).filter(Alarm.id == alarm_id).first()
     if not alarm:
         raise HTTPException(status_code=404, detail="报警记录不存在")
 
-    alarm.resolved = True
-    alarm.resolved_at = datetime.utcnow()
+    alarm.resolved = payload.resolved
+    if payload.resolved:
+        alarm.resolved_at = datetime.utcnow()
+    else:
+        alarm.resolved_at = None
     db.commit()
 
     channel_name = db.query(Channel.name).filter(Channel.id == alarm.channel_id).scalar() or "未知通道"
@@ -53,6 +60,9 @@ def resolve_alarm(alarm_id: int, db: Session = Depends(get_db)):
         level=alarm.level,
         threshold=alarm.threshold,
         actual_value=alarm.actual_value,
+        value_a=alarm.value_a,
+        value_b=alarm.value_b,
+        sensor_source=alarm.sensor_source,
         occurred_at=alarm.occurred_at,
         description=alarm.description,
         resolved=alarm.resolved,

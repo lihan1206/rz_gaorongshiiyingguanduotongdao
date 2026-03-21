@@ -1,4 +1,4 @@
-import { Alert, Button, Form, InputNumber, Space, Table, Tag, message } from 'antd';
+import { Alert, Button, Card, Col, Form, InputNumber, Row, Space, Table, Tag, message } from 'antd';
 import dayjs from 'dayjs';
 import { useMemo, useState } from 'react';
 
@@ -17,7 +17,8 @@ const SamplingPage = ({ channels, loading, onAfterSync }) => {
       const values = await form.validateFields();
       const points = activeChannels.map((channel) => ({
         channel_id: channel.id,
-        value: Number(values[`channel_${channel.id}`]),
+        value_a: values[`channel_${channel.id}_a`] !== undefined ? Number(values[`channel_${channel.id}_a`]) : null,
+        value_b: values[`channel_${channel.id}_b`] !== undefined ? Number(values[`channel_${channel.id}_b`]) : null,
       }));
 
       setSubmitting(true);
@@ -42,10 +43,22 @@ const SamplingPage = ({ channels, loading, onAfterSync }) => {
     { title: '记录ID', dataIndex: 'id', key: 'id' },
     { title: '通道ID', dataIndex: 'channel_id', key: 'channel_id' },
     {
-      title: '液位值(mm)',
-      dataIndex: 'value',
-      key: 'value',
-      render: (value) => Number(value).toFixed(2),
+      title: '传感器A值(mm)',
+      dataIndex: 'value_a',
+      key: 'value_a',
+      render: (value) => (value !== null ? Number(value).toFixed(2) : '-'),
+    },
+    {
+      title: '传感器B值(mm)',
+      dataIndex: 'value_b',
+      key: 'value_b',
+      render: (value) => (value !== null ? Number(value).toFixed(2) : '-'),
+    },
+    {
+      title: '融合值(mm)',
+      dataIndex: 'fused_value',
+      key: 'fused_value',
+      render: (value) => <strong>{Number(value).toFixed(2)}</strong>,
     },
     {
       title: '状态',
@@ -69,8 +82,8 @@ const SamplingPage = ({ channels, loading, onAfterSync }) => {
       <Alert
         type="info"
         showIcon
-        message="说明"
-        description="该模块用于将每个在线通道的实时采样值一次性同步写入数据库，并触发阈值报警判定。"
+        message="多源传感器融合采样"
+        description="每个通道支持双传感器采集（A: 电容式, B: 超声波），系统使用加权平均法融合数据。采集频率建议：100ms。"
       />
 
       <Form form={form} layout="vertical" className="section-gap">
@@ -78,16 +91,48 @@ const SamplingPage = ({ channels, loading, onAfterSync }) => {
           <InputNumber style={{ width: 240 }} placeholder="可选" />
         </Form.Item>
 
-        <div className="sampling-grid">
+        <div className="sampling-grid-dual">
           {activeChannels.map((channel) => (
-            <Form.Item
-              key={channel.id}
-              label={`${channel.name} (${channel.warning_low}-${channel.warning_high}${channel.unit})`}
-              name={`channel_${channel.id}`}
-              rules={[{ required: true, message: '请输入液位值' }]}
+            <Card 
+              key={channel.id} 
+              size="small" 
+              title={channel.name}
+              extra={<Tag color="blue">权重 {channel.fusion_weight_a}:{channel.fusion_weight_b}</Tag>}
             >
-              <InputNumber style={{ width: '100%' }} min={channel.range_min} max={channel.range_max} />
-            </Form.Item>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    label={`传感器A (${channel.sensor_type_a})`}
+                    name={`channel_${channel.id}_a`}
+                    tooltip={`校准偏移: ${channel.calibration_offset_a}`}
+                  >
+                    <InputNumber 
+                      style={{ width: '100%' }} 
+                      min={channel.range_min} 
+                      max={channel.range_max} 
+                      placeholder="电容值"
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    label={`传感器B (${channel.sensor_type_b || '未配置'})`}
+                    name={`channel_${channel.id}_b`}
+                    tooltip={`校准偏移: ${channel.calibration_offset_b}`}
+                  >
+                    <InputNumber 
+                      style={{ width: '100%' }} 
+                      min={channel.range_min} 
+                      max={channel.range_max} 
+                      placeholder="超声波值"
+                    />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <div style={{ fontSize: 12, color: '#888' }}>
+                报警阈值: {channel.warning_low} ~ {channel.warning_high} {channel.unit}
+              </div>
+            </Card>
           ))}
         </div>
 

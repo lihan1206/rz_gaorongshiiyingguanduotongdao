@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -12,7 +13,7 @@ from app.services.sampling import ingest_sync_samples
 router = APIRouter(prefix="/samples", tags=["samples"])
 
 
-@router.post("/sync", response_model=list[SampleRead])
+@router.post("/sync", response_model=list)
 def create_sync_samples(payload: SyncSampleRequest, db: Session = Depends(get_db)):
     try:
         return ingest_sync_samples(db, payload)
@@ -20,11 +21,11 @@ def create_sync_samples(payload: SyncSampleRequest, db: Session = Depends(get_db
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.get("", response_model=list[SampleRead])
+@router.get("", response_model=list)
 def list_samples(
-    channel_id: int | None = None,
-    start: datetime | None = None,
-    end: datetime | None = None,
+    channel_id: Optional[int] = None,
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
     limit: int = Query(default=300, ge=1, le=2000),
     db: Session = Depends(get_db),
 ):
@@ -41,8 +42,8 @@ def list_samples(
 
 @router.get("/export")
 def export_samples_csv(
-    start: datetime | None = None,
-    end: datetime | None = None,
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
     db: Session = Depends(get_db),
 ):
     query = db.query(LiquidLevelData)
@@ -54,11 +55,14 @@ def export_samples_csv(
     records = query.order_by(LiquidLevelData.sample_time.asc()).all()
 
     def iter_csv():
-        yield "id,channel_id,value,sample_time,temperature,status\n"
+        yield "id,channel_id,value_a,value_b,fused_value,sample_time,temperature,status\n"
         for row in records:
+            value_a_str = str(row.value_a) if row.value_a is not None else ""
+            value_b_str = str(row.value_b) if row.value_b is not None else ""
             yield (
-                f"{row.id},{row.channel_id},{row.value},"
-                f"{row.sample_time.isoformat()},{row.temperature or ''},{row.status.value}\n"
+                f"{row.id},{row.channel_id},{value_a_str},{value_b_str},"
+                f"{row.fused_value},{row.sample_time.isoformat()},"
+                f"{row.temperature or ''},{row.status.value}\n"
             )
 
     filename = f"liquid_level_report_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.csv"

@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel
 
@@ -12,10 +13,16 @@ class AlarmRead(BaseModel):
     level: AlarmLevel
     threshold: float
     actual_value: float
+    value_a: Optional[float]
+    value_b: Optional[float]
+    sensor_source: str
     occurred_at: datetime
     description: str
     resolved: bool
-    resolved_at: datetime | None
+    resolved_at: Optional[datetime]
+
+    class Config:
+        from_attributes = True
 
 
 class AlarmResolveRequest(BaseModel):

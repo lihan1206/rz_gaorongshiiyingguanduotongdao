@@ -1,27 +1,31 @@
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
 from app.models.liquid_level_data import DataStatus
 
 
-class SamplePoint(BaseModel):
+class DualSensorPoint(BaseModel):
     channel_id: int
-    value: float
+    value_a: Optional[float] = None
+    value_b: Optional[float] = None
 
 
 class SyncSampleRequest(BaseModel):
-    sample_time: datetime | None = None
-    temperature: float | None = None
-    values: list[SamplePoint] = Field(..., min_length=1)
+    sample_time: Optional[datetime] = None
+    temperature: Optional[float] = None
+    values: list = Field(..., min_length=1)
 
 
 class SampleRead(BaseModel):
     id: int
     channel_id: int
-    value: float
+    value_a: Optional[float]
+    value_b: Optional[float]
+    fused_value: float
     sample_time: datetime
-    temperature: float | None
+    temperature: Optional[float]
     status: DataStatus
 
     class Config:

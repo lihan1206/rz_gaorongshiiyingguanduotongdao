@@ -64,7 +64,8 @@ const HistoryPage = ({ channels, loading }) => {
   const chartOption = useMemo(
     () => ({
       tooltip: { trigger: 'axis' },
-      grid: { left: 40, right: 16, top: 20, bottom: 40 },
+      legend: { data: ['传感器A', '传感器B', '融合值'] },
+      grid: { left: 40, right: 16, top: 40, bottom: 40 },
       xAxis: {
         type: 'category',
         boundaryGap: false,
@@ -76,12 +77,29 @@ const HistoryPage = ({ channels, loading }) => {
       },
       series: [
         {
+          name: '传感器A',
           type: 'line',
           smooth: true,
-          data: records.map((item) => item.value),
+          data: records.map((item) => item.value_a),
           symbol: 'none',
-          lineStyle: { width: 2, color: '#13c2c2' },
-          areaStyle: { color: 'rgba(19, 194, 194, 0.18)' },
+          lineStyle: { width: 2, color: '#13c2c2', type: 'dashed' },
+        },
+        {
+          name: '传感器B',
+          type: 'line',
+          smooth: true,
+          data: records.map((item) => item.value_b),
+          symbol: 'none',
+          lineStyle: { width: 2, color: '#722ed1', type: 'dashed' },
+        },
+        {
+          name: '融合值',
+          type: 'line',
+          smooth: true,
+          data: records.map((item) => item.fused_value),
+          symbol: 'none',
+          lineStyle: { width: 3, color: '#1677ff' },
+          areaStyle: { color: 'rgba(22, 119, 255, 0.18)' },
         },
       ],
     }),
@@ -89,13 +107,25 @@ const HistoryPage = ({ channels, loading }) => {
   );
 
   const columns = [
-    { title: '记录ID', dataIndex: 'id', key: 'id', width: 100 },
-    { title: '通道ID', dataIndex: 'channel_id', key: 'channel_id', width: 100 },
+    { title: '记录ID', dataIndex: 'id', key: 'id', width: 80 },
+    { title: '通道ID', dataIndex: 'channel_id', key: 'channel_id', width: 80 },
     {
-      title: '液位值(mm)',
-      dataIndex: 'value',
-      key: 'value',
-      render: (value) => Number(value).toFixed(2),
+      title: '传感器A(mm)',
+      dataIndex: 'value_a',
+      key: 'value_a',
+      render: (value) => (value !== null ? Number(value).toFixed(2) : '-'),
+    },
+    {
+      title: '传感器B(mm)',
+      dataIndex: 'value_b',
+      key: 'value_b',
+      render: (value) => (value !== null ? Number(value).toFixed(2) : '-'),
+    },
+    {
+      title: '融合值(mm)',
+      dataIndex: 'fused_value',
+      key: 'fused_value',
+      render: (value) => <strong>{Number(value).toFixed(2)}</strong>,
     },
     {
       title: '温度(℃)',
@@ -144,13 +174,13 @@ const HistoryPage = ({ channels, loading }) => {
       </Form>
 
       <div className="section-gap">
-        <h3 className="section-title">趋势分析</h3>
+        <h3 className="section-title">趋势分析（多传感器融合）</h3>
         {records.length > 0 ? <ReactECharts option={chartOption} style={{ height: 280 }} /> : <Empty description="请先执行查询" />}
       </div>
 
       <div className="section-gap">
         <h3 className="section-title">明细记录</h3>
-        <Table rowKey="id" dataSource={records} columns={columns} scroll={{ x: 1000 }} />
+        <Table rowKey="id" dataSource={records} columns={columns} scroll={{ x: 1100 }} />
       </div>
     </PageShell>
   );
