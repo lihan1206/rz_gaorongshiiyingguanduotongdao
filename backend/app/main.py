@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routers import alarms, auth, channels, dashboard, health, samples
+from app.api.routers import alarms, auth, channels, dashboard, health, samples, config, sensor
 from app.core.config import settings
 from app.core.logging_config import setup_logging
 from app.db.base import Base
@@ -33,6 +33,8 @@ app.include_router(channels.router, prefix="/api")
 app.include_router(samples.router, prefix="/api")
 app.include_router(alarms.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
+app.include_router(config.router, prefix="/api")
+app.include_router(sensor.router, prefix="/api")
 
 
 @app.on_event("startup")

@@ -14,7 +14,10 @@ class ChannelBase(BaseModel):
     calibration_offset: float = 0
     warning_low: float
     warning_high: float
+    drift_threshold: float = 0.5
+    drift_time_window: int = 5
     alarm_enabled: bool = True
+    enabled_alarm_types: str = "high,low,drift"
     status: ChannelStatus = ChannelStatus.active
 
     @model_validator(mode="after")
@@ -39,7 +42,10 @@ class ChannelUpdate(BaseModel):
     calibration_offset: float = 0
     warning_low: float
     warning_high: float
+    drift_threshold: float = 0.5
+    drift_time_window: int = 5
     alarm_enabled: bool = True
+    enabled_alarm_types: str = "high,low,drift"
     status: ChannelStatus = ChannelStatus.active
 
     @model_validator(mode="after")

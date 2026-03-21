@@ -11,11 +11,18 @@ class SensorType(str, Enum):
     capacitive = "capacitive"
     ultrasonic = "ultrasonic"
     laser = "laser"
+    hybrid = "hybrid"
 
 
 class ChannelStatus(str, Enum):
     active = "active"
     inactive = "inactive"
+
+
+class AlarmType(str, Enum):
+    high = "high"
+    low = "low"
+    drift = "drift"
 
 
 class Channel(Base):
@@ -30,7 +37,10 @@ class Channel(Base):
     calibration_offset: Mapped[float] = mapped_column(Float, default=0.0)
     warning_low: Mapped[float] = mapped_column(Float, nullable=False)
     warning_high: Mapped[float] = mapped_column(Float, nullable=False)
+    drift_threshold: Mapped[float] = mapped_column(Float, default=0.5)
+    drift_time_window: Mapped[int] = mapped_column(Integer, default=5)
     alarm_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    enabled_alarm_types: Mapped[str] = mapped_column(String(100), default="high,low,drift")
     status: Mapped[ChannelStatus] = mapped_column(SQLEnum(ChannelStatus), default=ChannelStatus.active)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -40,3 +50,6 @@ class Channel(Base):
         cascade="all, delete-orphan",
     )
     alarms = relationship("Alarm", back_populates="channel", cascade="all, delete-orphan")
+
+    def get_enabled_alarm_types(self) -> list[AlarmType]:
+        return [AlarmType(t.strip()) for t in self.enabled_alarm_types.split(",") if t.strip()]

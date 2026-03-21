@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -6,8 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models.liquid_level_data import LiquidLevelData
-from app.schemas.sample import SampleRead, SyncSampleRequest
-from app.services.sampling import ingest_sync_samples
+from app.schemas.sample import SampleRead, SyncSampleRequest, MultiSensorSampleRequest
+from app.services.sampling import ingest_sync_samples, ingest_multi_sensor_samples
 
 router = APIRouter(prefix="/samples", tags=["samples"])
 
@@ -20,11 +21,20 @@ def create_sync_samples(payload: SyncSampleRequest, db: Session = Depends(get_db
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.get("", response_model=list[SampleRead])
+@router.post("/multi-sensor", response_model=list[SampleRead])
+def create_multi_sensor_samples(payload: MultiSensorSampleRequest, db: Session = Depends(get_db)):
+    """接收多传感器数据并进行融合处理"""
+    try:
+        return ingest_multi_sensor_samples(db, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("", response_model=List[SampleRead])
 def list_samples(
-    channel_id: int | None = None,
-    start: datetime | None = None,
-    end: datetime | None = None,
+    channel_id: Optional[int] = None,
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
     limit: int = Query(default=300, ge=1, le=2000),
     db: Session = Depends(get_db),
 ):
@@ -41,8 +51,8 @@ def list_samples(
 
 @router.get("/export")
 def export_samples_csv(
-    start: datetime | None = None,
-    end: datetime | None = None,
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
     db: Session = Depends(get_db),
 ):
     query = db.query(LiquidLevelData)

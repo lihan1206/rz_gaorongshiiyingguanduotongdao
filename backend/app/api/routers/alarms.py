@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -11,8 +12,8 @@ from app.schemas.alarm import AlarmRead
 router = APIRouter(prefix="/alarms", tags=["alarms"])
 
 
-@router.get("", response_model=list[AlarmRead])
-def list_alarms(resolved: bool | None = None, db: Session = Depends(get_db)):
+@router.get("", response_model=List[AlarmRead])
+def list_alarms(resolved: Optional[bool] = None, db: Session = Depends(get_db)):
     query = db.query(Alarm, Channel.name).join(Channel, Channel.id == Alarm.channel_id)
     if resolved is not None:
         query = query.filter(Alarm.resolved == resolved)
@@ -24,12 +25,14 @@ def list_alarms(resolved: bool | None = None, db: Session = Depends(get_db)):
             channel_id=alarm.channel_id,
             channel_name=channel_name,
             level=alarm.level,
+            alarm_type=alarm.alarm_type,
             threshold=alarm.threshold,
             actual_value=alarm.actual_value,
             occurred_at=alarm.occurred_at,
             description=alarm.description,
             resolved=alarm.resolved,
             resolved_at=alarm.resolved_at,
+            sensor_source=alarm.sensor_source,
         )
         for alarm, channel_name in rows
     ]
@@ -51,10 +54,12 @@ def resolve_alarm(alarm_id: int, db: Session = Depends(get_db)):
         channel_id=alarm.channel_id,
         channel_name=channel_name,
         level=alarm.level,
+        alarm_type=alarm.alarm_type,
         threshold=alarm.threshold,
         actual_value=alarm.actual_value,
         occurred_at=alarm.occurred_at,
         description=alarm.description,
         resolved=alarm.resolved,
         resolved_at=alarm.resolved_at,
+        sensor_source=alarm.sensor_source,
     )
