@@ -1,4 +1,3 @@
-import json
 import logging
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -11,34 +10,42 @@ from app.models.alarm import Alarm, AlarmLevel
 from app.models.channel import AlarmType, Channel
 from app.models.liquid_level_data import DataStatus, LiquidLevelData
 from app.schemas.sample import SyncSampleRequest
+from app.services.alarm import AlarmManager, AlarmType as ServiceAlarmType, get_alarm_manager
+from app.services.config_manager import get_config, load_config
+from app.services.db import DatabaseManager
+from app.services.fusion import DataStatus as FusionDataStatus, fuse_sensor_values
+from app.services.db import ChannelRepository, LiquidLevelDataRepository, AlarmRepository
 
 logger = logging.getLogger(__name__)
-
-CONFIG_PATH = Path(__file__).parent.parent / "core" / "config.json"
-
-
-def load_config() -> Dict[str, Any]:
-    try:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception as e:
-        logger.warning(f"加载配置文件失败: {e}, 使用默认配置")
-        return {
-            "alarm_consecutive_count": 3,
-            "drift_detection": {
-                "enabled": True,
-                "window_seconds": 5,
-                "threshold_mm": 0.5,
-            },
-        }
-
 
 _exceed_count: Dict[int, int] = defaultdict(int)
 _value_history: Dict[int, List[tuple]] = defaultdict(list)
 
+_alarm_manager: Optional[AlarmManager] = None
+_db_manager: Optional[DatabaseManager] = None
+_channel_repo: Optional[ChannelRepository] = None
+_data_repo: Optional[LiquidLevelDataRepository] = None
+_alarm_repo: Optional[AlarmRepository] = None
+
+
+def _init_managers():
+    global _alarm_manager, _db_manager, _channel_repo, _data_repo, _alarm_repo
+
+    if _alarm_manager is None:
+        _alarm_manager = get_alarm_manager()
+
+    if _db_manager is None:
+        from app.db.session import SessionLocal
+        _db_manager = DatabaseManager(SessionLocal)
+        _channel_repo = ChannelRepository(_db_manager)
+        _data_repo = LiquidLevelDataRepository(_db_manager)
+        _alarm_repo = AlarmRepository(_db_manager)
+
 
 def reset_alarm_state(channel_id: int) -> None:
     _exceed_count[channel_id] = 0
+    if _alarm_manager:
+        _alarm_manager.reset_channel_state(channel_id)
 
 
 def classify_status(channel: Channel, value: float) -> DataStatus:
@@ -134,6 +141,7 @@ def create_alarm_if_needed(
                     description=f"{channel.name} 液位高于报警上限 {channel.warning_high}{channel.unit}",
                 )
                 db.add(alarm)
+                logger.warning(f"通道 {channel.id} 触发高液位报警: {fused_value} > {channel.warning_high}")
                 return alarm
         else:
             _exceed_count[channel.id] = 0
@@ -155,6 +163,7 @@ def create_alarm_if_needed(
                     description=f"{channel.name} 液位低于报警下限 {channel.warning_low}{channel.unit}",
                 )
                 db.add(alarm)
+                logger.warning(f"通道 {channel.id} 触发低液位报警: {fused_value} < {channel.warning_low}")
                 return alarm
         else:
             _exceed_count[channel.id] = 0
@@ -173,19 +182,38 @@ def create_alarm_if_needed(
                 description=f"{channel.name} 液位漂移报警，检测到液位连续下降",
             )
             db.add(alarm)
+            logger.warning(f"通道 {channel.id} 触发漂移报警")
             return alarm
 
     return None
 
 
 def ingest_sync_samples(db: Session, payload: SyncSampleRequest) -> List[LiquidLevelData]:
-    config = load_config()
+    try:
+        config = load_config()
+    except Exception as e:
+        logger.error(f"加载配置失败: {e}")
+        config = {
+            "alarm_consecutive_count": 3,
+            "drift_detection": {
+                "enabled": True,
+                "window_seconds": 5,
+                "threshold_mm": 0.5,
+            },
+        }
+
     sample_time = payload.sample_time or datetime.utcnow()
     point_map = {point.channel_id: point for point in payload.values}
-    channels = db.query(Channel).filter(Channel.id.in_(point_map.keys())).all()
+
+    try:
+        channels = db.query(Channel).filter(Channel.id.in_(point_map.keys())).all()
+    except Exception as e:
+        logger.error(f"查询通道失败: {e}")
+        raise
 
     if len(channels) != len(point_map):
         missing_ids = sorted(set(point_map.keys()) - {channel.id for channel in channels})
+        logger.error(f"通道不存在: {missing_ids}")
         raise ValueError(f"通道不存在: {missing_ids}")
 
     records: List[LiquidLevelData] = []
@@ -199,12 +227,16 @@ def ingest_sync_samples(db: Session, payload: SyncSampleRequest) -> List[LiquidL
         if value_b is not None:
             value_b = value_b + channel.calibration_offset_b
 
-        fused_value = fuse_sensor_values(
-            value_a,
-            value_b,
-            channel.fusion_weight_a,
-            channel.fusion_weight_b,
-        )
+        try:
+            fused_value = fuse_sensor_values(
+                value_a,
+                value_b,
+                channel.fusion_weight_a,
+                channel.fusion_weight_b,
+            )
+        except ValueError as e:
+            logger.error(f"通道 {channel.id} 融合失败: {e}")
+            continue
 
         status = classify_status(channel, fused_value)
 
@@ -217,21 +249,31 @@ def ingest_sync_samples(db: Session, payload: SyncSampleRequest) -> List[LiquidL
             temperature=payload.temperature,
             status=status,
         )
-        db.add(data)
 
-        create_alarm_if_needed(
-            db,
-            channel,
-            fused_value,
-            value_a,
-            value_b,
-            sample_time,
-            config,
-        )
+        try:
+            db.add(data)
+            create_alarm_if_needed(
+                db,
+                channel,
+                fused_value,
+                value_a,
+                value_b,
+                sample_time,
+                config,
+            )
+            records.append(data)
+        except Exception as e:
+            logger.error(f"通道 {channel.id} 保存数据失败: {e}")
+            continue
 
-        records.append(data)
+    try:
+        db.commit()
+        for record in records:
+            db.refresh(record)
+    except Exception as e:
+        logger.error(f"提交事务失败: {e}")
+        db.rollback()
+        raise
 
-    db.commit()
-    for record in records:
-        db.refresh(record)
+    logger.info(f"成功处理 {len(records)} 条采样数据")
     return records

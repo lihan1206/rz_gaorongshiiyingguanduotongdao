@@ -1,0 +1,53 @@
+{
+    "sampling_interval_ms": 100,
+    "alarm_consecutive_count": 3,
+    "drift_detection": {
+        "enabled": true,
+        "window_seconds": 5,
+        "threshold_mm": 0.5
+    },
+    "default_thresholds": {
+        "warning_low": 50.0,
+        "warning_high": 500.0,
+        "alarm_type": "high"
+    },
+    "sensor_fusion": {
+        "default_weight_a": 0.5,
+        "default_weight_b": 0.5,
+        "method": "weighted_average"
+    },
+    "channels": [
+        {
+            "id": 1,
+            "warning_low": 50.0,
+            "warning_high": 500.0,
+            "alarm_type": "high",
+            "alarm_enabled": true
+        },
+        {
+            "id": 2,
+            "warning_low": 50.0,
+            "warning_high": 500.0,
+            "alarm_type": "low",
+            "alarm_enabled": true
+        },
+        {
+            "id": 3,
+            "warning_low": 30.0,
+            "warning_high": 450.0,
+            "alarm_type": "drift",
+            "alarm_enabled": true
+        }
+    ],
+    "database": {
+        "max_retries": 3,
+        "retry_delay": 1.0,
+        "connection_timeout": 30
+    },
+    "logging": {
+        "level": "INFO",
+        "enable_file_logging": true,
+        "max_file_size_mb": 10,
+        "backup_count": 5
+    }
+}
