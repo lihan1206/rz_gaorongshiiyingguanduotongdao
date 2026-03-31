@@ -1,0 +1,25 @@
+{
+  "sensors": [
+    {
+      "channel_id": 1,
+      "port": "COM1",
+      "baudrate": 9600,
+      "sensor_type": "capacitive",
+      "enabled": true
+    },
+    {
+      "channel_id": 2,
+      "port": "COM2",
+      "baudrate": 9600,
+      "sensor_type": "ultrasonic",
+      "enabled": true
+    },
+    {
+      "channel_id": 3,
+      "port": "COM3",
+      "baudrate": 9600,
+      "sensor_type": "laser",
+      "enabled": true
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "thresholds": [
+    {
+      "channel_id": 1,
+      "warning_low": 20.0,
+      "warning_high": 80.0,
+      "critical_low": 10.0,
+      "critical_high": 90.0,
+      "range_min": 0.0,
+      "range_max": 100.0,
+      "alarm_enabled": true,
+      "calibration_offset": 0.0
+    },
+    {
+      "channel_id": 2,
+      "warning_low": 20.0,
+      "warning_high": 80.0,
+      "critical_low": 10.0,
+      "critical_high": 90.0,
+      "range_min": 0.0,
+      "range_max": 100.0,
+      "alarm_enabled": true,
+      "calibration_offset": 0.0
+    },
+    {
+      "channel_id": 3,
+      "warning_low": 20.0,
+      "warning_high": 80.0,
+      "critical_low": 10.0,
+      "critical_high": 90.0,
+      "range_min": 0.0,
+      "range_max": 100.0,
+      "alarm_enabled": true,
+      "calibration_offset": 0.0
+    }
+  ]
+}

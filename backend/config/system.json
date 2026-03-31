@@ -1,0 +1,7 @@
+{
+  "sample_interval": 1.0,
+  "fusion_algorithm": "average",
+  "alarm_cooldown_seconds": 60,
+  "data_retention_days": 30,
+  "log_level": "INFO"
+}
