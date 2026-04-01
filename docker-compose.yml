@@ -33,8 +33,13 @@ services:
         condition: service_healthy
     ports:
       - "8000:8000"
+    volumes:
+      - ./backend/app/core/config.json:/app/app/core/config.json:ro
+      - ./backend/app/core/thresholds.json:/app/app/core/thresholds.json:ro
+      - ./backend/app/services/plugins:/app/app/services/plugins:ro
     networks:
       - quartz_net
+    restart: unless-stopped
 
   frontend:
     build:
@@ -46,6 +51,7 @@ services:
       - "3000:80"
     networks:
       - quartz_net
+    restart: unless-stopped
 
 volumes:
   db_data:

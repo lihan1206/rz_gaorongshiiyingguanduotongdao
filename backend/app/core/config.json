@@ -36,6 +36,13 @@
             "warning_high": 450.0,
             "alarm_type": "drift",
             "alarm_enabled": true
+        },
+        {
+            "id": 4,
+            "warning_low": 40.0,
+            "warning_high": 480.0,
+            "alarm_type": "high",
+            "alarm_enabled": true
         }
     ]
 }
