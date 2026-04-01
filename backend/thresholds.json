@@ -1,0 +1,17 @@
+{
+  "global": {
+    "warning_low": 10.0,
+    "warning_high": 90.0,
+    "drift_threshold": 0.5,
+    "drift_time_window": 5
+  },
+  "channels": {
+    "1": {
+      "warning_low": 10.0,
+      "warning_high": 90.0,
+      "drift_threshold": 0.5,
+      "drift_time_window": 5,
+      "enabled": true
+    }
+  }
+}

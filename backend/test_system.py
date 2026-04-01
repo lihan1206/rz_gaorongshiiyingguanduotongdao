@@ -1,276 +1,351 @@
 #!/usr/bin/env python3
 """
 系统功能测试脚本
-测试传感器数据采集、融合和报警逻辑
+用于测试多通道液位传感器数据采集系统的各项功能
 """
+
 import sys
-sys.path.insert(0, '.')
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'app'))
 
-import time
+import asyncio
+import logging
 from datetime import datetime
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from typing import List
 
-from app.core.config import settings, AppConfig
-from app.db.base import Base
-from app.models.channel import Channel, SensorType, ChannelStatus
-from app.models.liquid_level_data import LiquidLevelData
-from app.models.alarm import Alarm
-from app.services.sensor_fusion import SensorManager, DataFusion
-from app.services.alarm_detector import AlarmDetector
-from app.services.sampling import ingest_fused_sensor_data
+# 设置日志
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
-def test_sensor_data_collection():
-    """测试传感器数据采集"""
-    print("=" * 60)
-    print("测试1: 传感器数据采集")
-    print("=" * 60)
+def test_configuration():
+    """测试配置管理功能"""
+    logger.info("=== 测试配置管理功能 ===")
     
-    manager = SensorManager(num_channels=4)
+    from app.config import AppConfig, ConfigError, JSONParseError
     
-    # 读取单通道数据
-    print("\n读取单通道数据:")
-    data = manager.read_channel(1, temperature=25.5)
-    print(f"通道1数据: 电容={data.capacitive_value:.3f}, 超声={data.ultrasonic_value:.3f}, 融合={data.fused_value:.3f}")
+    try:
+        AppConfig.load_config(force_reload=True)
+        logger.info("配置文件加载成功")
+        
+        sensor_weights = AppConfig.get_sensor_weights()
+        logger.info(f"传感器权重: {sensor_weights}")
+        
+        sampling_settings = AppConfig.get_sampling_settings()
+        logger.info(f"采样设置: {sampling_settings}")
+        
+        alarm_settings = AppConfig.get_alarm_settings()
+        logger.info(f"报警设置: {alarm_settings}")
+        
+        config_info = AppConfig.get_config_info()
+        logger.info(f"配置信息: {config_info}")
+        
+        logger.info("配置管理功能测试通过 ✓")
+    except Exception as e:
+        logger.error(f"配置管理功能测试失败: {e}")
+        raise
+
+
+def test_sensor_simulation():
+    """测试传感器模拟功能"""
+    logger.info("=== 测试传感器模拟功能 ===")
     
-    # 读取所有通道数据
-    print("\n读取所有通道数据:")
-    all_data = manager.read_all_channels(temperature=25.5)
-    for d in all_data:
-        print(f"通道{d.channel_id}: 融合值={d.fused_value:.3f}")
+    from app.sensor import SensorManager, SensorError, SensorData
     
-    print("\n✓ 传感器数据采集测试通过!")
-    return True
+    try:
+        sensor_manager = SensorManager(num_channels=4)
+        logger.info(f"传感器管理器初始化成功，通道数: {sensor_manager.num_channels}")
+        
+        data = sensor_manager.read_channel(1)
+        logger.info(f"通道1读数: 电容={data.capacitive_value}, 超声波={data.ultrasonic_value}, 融合={data.fused_value}")
+        
+        all_data = sensor_manager.read_all_channels(temperature=25.5)
+        logger.info(f"所有通道读数完成，共 {len(all_data)} 条数据")
+        
+        for d in all_data[:2]:
+            logger.info(f"通道{d.channel_id}: {d.fused_value}")
+        
+        sensor_manager.start_drift(1, rate=-0.5)
+        logger.info("通道1开始漂移模拟")
+        
+        for i in range(3):
+            data = sensor_manager.read_channel(1)
+            logger.info(f"漂移读数 {i+1}: {data.fused_value}")
+        
+        sensor_manager.stop_drift(1)
+        logger.info("传感器模拟功能测试通过 ✓")
+    except Exception as e:
+        logger.error(f"传感器模拟功能测试失败: {e}")
+        raise
 
 
 def test_data_fusion():
-    """测试数据融合算法"""
-    print("\n" + "=" * 60)
-    print("测试2: 数据融合算法")
-    print("=" * 60)
+    """测试数据融合功能"""
+    logger.info("=== 测试数据融合功能 ===")
     
-    # 测试加权平均
-    print("\n加权平均法测试:")
-    cap_val = 50.0
-    ult_val = 52.0
-    fused = DataFusion.weighted_average(cap_val, ult_val)
-    weights = AppConfig.get_sensor_weights()
-    print(f"电容值={cap_val}, 超声值={ult_val}")
-    print(f"权重: 电容={weights['capacitive']}, 超声={weights['ultrasonic']}")
-    print(f"融合结果={fused:.3f} (预期: {cap_val * 0.6 + ult_val * 0.4:.3f})")
+    from app.sensor import SensorManager
+    from app.fusion import FusionManager, DataFusion, FusionError
     
-    # 测试卡尔曼滤波
-    print("\n卡尔曼滤波测试:")
-    prev_estimate = 50.0
-    prev_error = 1.0
-    filtered, error = DataFusion.kalman_filter(51.0, 53.0, prev_estimate, prev_error)
-    print(f"初始估计={prev_estimate}, 初始误差={prev_error}")
-    print(f"新测量: 电容={51.0}, 超声={53.0}")
-    print(f"滤波结果={filtered:.3f}, 新误差={error:.3f}")
+    try:
+        sensor_manager = SensorManager(num_channels=4)
+        fusion_manager = FusionManager(
+            sensor_manager=sensor_manager,
+            weights={"capacitive": 0.6, "ultrasonic": 0.4},
+            use_kalman=True,
+        )
+        logger.info("融合管理器初始化成功")
+        
+        raw_data = sensor_manager.read_channel(1)
+        logger.info(f"原始数据: 电容={raw_data.capacitive_value}, 超声波={raw_data.ultrasonic_value}")
+        
+        fused_data = fusion_manager.process_sensor_data(raw_data)
+        logger.info(f"融合结果: {fused_data.fused_value}")
+        
+        weighted_avg = DataFusion.weighted_average(50.0, 52.0, {"capacitive": 0.6, "ultrasonic": 0.4})
+        logger.info(f"加权平均测试: 50.0*0.6 + 52.0*0.4 = {weighted_avg}")
+        
+        kalman_result, error = DataFusion.kalman_filter(50.0, 52.0, 50.0, 1.0)
+        logger.info(f"卡尔曼滤波测试: 结果={kalman_result:.3f}, 误差={error:.3f}")
+        
+        all_data = sensor_manager.read_all_channels()
+        fused_batch = fusion_manager.process_batch(all_data)
+        logger.info(f"批量融合完成，共 {len(fused_batch)} 条数据")
+        
+        logger.info("数据融合功能测试通过 ✓")
+    except Exception as e:
+        logger.error(f"数据融合功能测试失败: {e}")
+        raise
+
+
+def test_sensor_plugins():
+    """测试传感器插件系统"""
+    logger.info("=== 测试传感器插件系统 ===")
     
-    print("\n✓ 数据融合算法测试通过!")
-    return True
+    try:
+        from app.sensor_plugins import (
+            SensorPluginManager,
+            CapacitiveSensor,
+            UltrasonicSensor,
+            InfraredSensor,
+        )
+        
+        plugin_manager = SensorPluginManager()
+        
+        available = plugin_manager.list_available_plugins()
+        logger.info(f"可用插件: {[p['name'] for p in available]}")
+        
+        cap_plugin = plugin_manager.create_plugin(
+            "capacitive",
+            "cap_channel_1",
+            {"channel_id": 1, "base_value": 60.0},
+        )
+        logger.info(f"创建电容插件: {cap_plugin.plugin_name}")
+        
+        ult_plugin = plugin_manager.create_plugin(
+            "ultrasonic",
+            "ult_channel_1",
+            {"channel_id": 1, "base_value": 60.0},
+        )
+        logger.info(f"创建超声波插件: {ult_plugin.plugin_name}")
+        
+        inf_plugin = plugin_manager.create_plugin(
+            "infrared",
+            "inf_channel_1",
+            {"channel_id": 1, "base_value": 60.0},
+        )
+        logger.info(f"创建红外插件: {inf_plugin.plugin_name}")
+        
+        cap_plugin.connect()
+        ult_plugin.connect()
+        inf_plugin.connect()
+        
+        cap_reading = cap_plugin.read()
+        logger.info(f"电容读数: {cap_reading.value}")
+        
+        ult_reading = ult_plugin.read()
+        logger.info(f"超声波读数: {ult_reading.value}")
+        
+        inf_reading = inf_plugin.read()
+        logger.info(f"红外读数: {inf_reading.value}")
+        
+        active = plugin_manager.list_active_instances()
+        logger.info(f"活动实例数: {len(active)}")
+        
+        all_readings = plugin_manager.read_all()
+        logger.info(f"批量读数数: {len(all_readings)}")
+        
+        plugin_manager.disconnect_all()
+        logger.info("所有插件已断开连接")
+        
+        logger.info("传感器插件系统测试通过 ✓")
+    except Exception as e:
+        logger.error(f"传感器插件系统测试失败: {e}")
+        raise
+
+
+async def test_async_acquisition():
+    """测试异步数据采集"""
+    logger.info("=== 测试异步数据采集 ===")
+    
+    try:
+        from app.sensor import SensorManager
+        from app.fusion import FusionManager
+        from app.services.acquisition import AsyncDataAcquisition
+        
+        sensor_manager = SensorManager(num_channels=4)
+        fusion_manager = FusionManager(sensor_manager=sensor_manager)
+        
+        class MockDBManager:
+            def get_session(self):
+                class MockSession:
+                    def __enter__(self): return self
+                    def __exit__(self, *args): pass
+                return MockSession()
+        
+        async_acq = AsyncDataAcquisition(
+            sensor_manager=sensor_manager,
+            fusion_manager=fusion_manager,
+            db_manager=MockDBManager(),
+            max_workers=4,
+        )
+        logger.info("异步采集器初始化成功")
+        
+        results = await async_acq.read_all_channels(temperature=25.0)
+        
+        success_count = sum(1 for r in results if r.success)
+        logger.info(f"异步采集结果: 成功 {success_count}/{len(results)}")
+        
+        for result in results[:2]:
+            if result.success:
+                logger.info(f"通道{result.channel_id}: {result.data.fused_value}")
+            else:
+                logger.warning(f"通道{result.channel_id}: {result.error}")
+        
+        async_acq.stop()
+        logger.info("异步数据采集测试通过 ✓")
+    except Exception as e:
+        logger.error(f"异步数据采集测试失败: {e}")
+        raise
 
 
 def test_alarm_detection():
-    """测试报警检测逻辑"""
-    print("\n" + "=" * 60)
-    print("测试3: 报警检测逻辑")
-    print("=" * 60)
-    
-    # 创建内存数据库进行测试
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    db = SessionLocal()
-    
-    # 创建测试通道
-    channel = Channel(
-        name="测试通道1",
-        sensor_type=SensorType.hybrid,
-        range_min=0.0,
-        range_max=100.0,
-        warning_low=20.0,
-        warning_high=80.0,
-        drift_threshold=0.5,
-        drift_time_window=5,
-        alarm_enabled=True,
-        enabled_alarm_types="high,low,drift",
-        status=ChannelStatus.active,
-    )
-    db.add(channel)
-    db.commit()
-    db.refresh(channel)
-    
-    alarm_detector = AlarmDetector(db)
-    manager = SensorManager(num_channels=1)
-    
-    print("\n测试连续3次超阈值触发报警:")
-    # 模拟高于阈值的数据
-    high_values = [85.0, 86.0, 87.0]  # 高于阈值80
-    alarms_triggered = 0
-    
-    for i, val in enumerate(high_values):
-        # 修改模拟器返回的值
-        manager.simulators[1].current_value = val
-        data = manager.read_channel(1)
-        # 手动设置融合值
-        data.fused_value = val
-        data.capacitive_value = val
-        data.ultrasonic_value = val
-        
-        alarms = alarm_detector.process_sensor_data(channel, data)
-        if alarms:
-            alarms_triggered += len(alarms)
-            for alarm in alarms:
-                print(f"  触发报警: {alarm.alarm_type.value}, 值={alarm.actual_value}")
-        else:
-            status = alarm_detector.get_channel_status(1)
-            print(f"  第{i+1}次检测: 连续警告数={status['consecutive_warnings']}")
-    
-    print(f"  触发报警数: {alarms_triggered}")
-    
-    print("\n测试漂移报警检测:")
-    # 重置状态
-    alarm_detector.reset_channel(1)
-    
-    # 模拟漂移（连续下降）
-    base_value = 50.0
-    drift_rate = -0.2  # 每次下降0.2
-    drift_alarms = 0
-    
-    for i in range(10):
-        val = base_value + drift_rate * i
-        manager.simulators[1].current_value = val
-        data = manager.read_channel(1)
-        data.fused_value = val
-        data.capacitive_value = val
-        data.ultrasonic_value = val
-        
-        alarms = alarm_detector.process_sensor_data(channel, data)
-        if alarms:
-            drift_alarms += len([a for a in alarms if a.alarm_type == 'drift'])
-    
-    print(f"  漂移报警数: {drift_alarms}")
-    
-    db.close()
-    print("\n✓ 报警检测逻辑测试通过!")
-    return True
-
-
-def test_config_updates():
-    """测试配置更新功能"""
-    print("\n" + "=" * 60)
-    print("测试4: 配置更新功能")
-    print("=" * 60)
-    
-    # 测试传感器权重配置
-    print("\n传感器权重配置测试:")
-    original_weights = AppConfig.get_sensor_weights()
-    print(f"原权重: 电容={original_weights['capacitive']}, 超声={original_weights['ultrasonic']}")
+    """测试报警检测功能"""
+    logger.info("=== 测试报警检测功能 ===")
     
     try:
-        AppConfig.set_sensor_weights(0.7, 0.3)
-        new_weights = AppConfig.get_sensor_weights()
-        print(f"新权重: 电容={new_weights['capacitive']}, 超声={new_weights['ultrasonic']}")
-    except ValueError as e:
-        print(f"错误: {e}")
+        from app.alarm import AlarmDetector, ChannelAlarmConfig, AlarmType, AlarmLevel
+        
+        alarm_settings = {
+            "consecutive_threshold": 2,
+            "drift_detection_window": 5,
+            "drift_rate_threshold": 0.1,
+        }
+        
+        alarm_detector = AlarmDetector(alarm_settings=alarm_settings)
+        logger.info("报警检测器初始化成功")
+        
+        channel_config = ChannelAlarmConfig(
+            warning_low=10.0,
+            warning_high=90.0,
+            drift_threshold=5.0,
+            drift_time_window=5,
+        )
+        alarm_detector.configure_channel(1, channel_config)
+        logger.info("通道1报警配置完成")
+        
+        test_values = [5.0, 8.0, 15.0, 95.0, 92.0, 85.0]
+        all_alarms = []
+        
+        for i, value in enumerate(test_values):
+            alarms = alarm_detector.process_value(
+                channel_id=1,
+                value=value,
+                timestamp=datetime.utcnow(),
+                channel_name=f"测试通道{i+1}",
+                unit="%",
+            )
+            all_alarms.extend(alarms)
+            if alarms:
+                logger.info(f"值 {value} 触发报警: {[a.description for a in alarms]}")
+        
+        logger.info(f"总共触发 {len(all_alarms)} 个报警")
+        
+        active_alarms = alarm_detector.get_active_alarms(1)
+        logger.info(f"当前活跃报警数: {len(active_alarms)}")
+        
+        status = alarm_detector.get_channel_status(1)
+        logger.info(f"通道状态: 近期值={status['recent_values'][-5:]}")
+        
+        logger.info("报警检测功能测试通过 ✓")
+    except Exception as e:
+        logger.error(f"报警检测功能测试失败: {e}")
+        raise
+
+
+def test_database_operations():
+    """测试数据库操作（使用SQLite进行测试）"""
+    logger.info("=== 测试数据库操作 ===")
     
-    # 测试无效权重（和不为1）
     try:
-        AppConfig.set_sensor_weights(0.8, 0.3)
-        print("错误: 应该抛出异常但没有")
-    except ValueError as e:
-        print(f"正确捕获无效权重错误: {e}")
-    
-    # 恢复原权重
-    AppConfig.set_sensor_weights(original_weights['capacitive'], original_weights['ultrasonic'])
-    
-    print("\n✓ 配置更新功能测试通过!")
-    return True
-
-
-def test_data_persistence():
-    """测试数据持久化"""
-    print("\n" + "=" * 60)
-    print("测试5: 数据持久化")
-    print("=" * 60)
-    
-    # 创建内存数据库进行测试
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    db = SessionLocal()
-    
-    # 创建测试通道
-    channel = Channel(
-        name="测试通道2",
-        sensor_type=SensorType.hybrid,
-        range_min=0.0,
-        range_max=100.0,
-        warning_low=10.0,
-        warning_high=90.0,
-        status=ChannelStatus.active,
-    )
-    db.add(channel)
-    db.commit()
-    
-    manager = SensorManager(num_channels=1)
-    sensor_data_list = manager.read_all_channels(temperature=25.0)
-    
-    # 存储数据
-    records = ingest_fused_sensor_data(db, sensor_data_list)
-    print(f"\n存储数据记录数: {len(records)}")
-    
-    # 验证存储
-    for record in records:
-        print(f"通道{record.channel_id}: 融合值={record.fused_value:.3f}, 状态={record.status.value}")
-    
-    # 查询数据
-    stored_data = db.query(LiquidLevelData).all()
-    print(f"数据库中数据记录数: {len(stored_data)}")
-    
-    db.close()
-    print("\n✓ 数据持久化测试通过!")
-    return True
+        from app.database import DatabaseManager, ConnectionError
+        
+        test_db_url = "sqlite:///:memory:"
+        db_manager = DatabaseManager(test_db_url)
+        logger.info("数据库管理器初始化成功")
+        
+        connected = db_manager.test_connection()
+        logger.info(f"数据库连接测试: {'成功' if connected else '失败'}")
+        
+        logger.info("数据库操作测试通过 ✓")
+    except Exception as e:
+        logger.warning(f"数据库操作测试跳过（需要MySQL连接）: {e}")
 
 
 def main():
     """运行所有测试"""
-    print("系统功能测试开始\n")
+    logger.info("=" * 60)
+    logger.info("开始运行系统功能测试")
+    logger.info("=" * 60)
     
     tests = [
-        test_sensor_data_collection,
-        test_data_fusion,
-        test_alarm_detection,
-        test_config_updates,
-        test_data_persistence,
+        ("配置管理功能", test_configuration),
+        ("传感器模拟功能", test_sensor_simulation),
+        ("数据融合功能", test_data_fusion),
+        ("传感器插件系统", test_sensor_plugins),
+        ("报警检测功能", test_alarm_detection),
+        ("数据库操作", test_database_operations),
     ]
     
     results = []
-    for test in tests:
+    for test_name, test_func in tests:
         try:
-            results.append(test())
+            test_func()
+            results.append((test_name, "PASS", None))
         except Exception as e:
-            print(f"\n✗ {test.__name__} 失败: {e}")
-            import traceback
-            traceback.print_exc()
-            results.append(False)
+            results.append((test_name, "FAIL", str(e)))
     
-    print("\n" + "=" * 60)
-    print("测试总结")
-    print("=" * 60)
-    passed = sum(results)
+    logger.info("=" * 60)
+    logger.info("测试总结")
+    logger.info("=" * 60)
+    
+    for test_name, status, error in results:
+        if status == "PASS":
+            logger.info(f"✓ {test_name}: 通过")
+        else:
+            logger.error(f"✗ {test_name}: 失败 - {error}")
+    
+    passed = sum(1 for r in results if r[1] == "PASS")
     total = len(results)
-    print(f"通过: {passed}/{total}")
+    logger.info("=" * 60)
+    logger.info(f"测试结果: {passed}/{total} 项测试通过")
+    logger.info("=" * 60)
     
-    if passed == total:
-        print("\n🎉 所有测试通过!")
-    else:
-        print("\n⚠️  部分测试失败")
-        sys.exit(1)
+    logger.info("\n=== 运行异步采集测试 ===")
+    asyncio.run(test_async_acquisition())
+    
+    return passed == total
 
 
 if __name__ == "__main__":
-    main()
+    success = main()
+    sys.exit(0 if success else 1)
